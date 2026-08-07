@@ -23,6 +23,14 @@ files.
 
 [Codex Environments documentation](plugin-codex-environments/README.md)
 
+### Stay Awake
+
+`plugin-stay-awake` blocks macOS idle sleep while bb runs, so agents keep
+working and `bb connect` stays reachable. The display still sleeps on its own
+schedule, and closing the lid still sleeps the machine.
+
+[Stay Awake documentation](plugin-stay-awake/README.md)
+
 ## Install a plugin
 
 Clone the repository, install the selected package's dependencies, then install
