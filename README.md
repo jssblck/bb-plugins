@@ -23,6 +23,16 @@ files.
 
 [Codex Environments documentation](plugin-codex-environments/README.md)
 
+### Goal
+
+`plugin-goal` gives a thread a durable objective it keeps working toward across
+turns. bb restates the goal in every turn and continues the thread each time it
+goes idle, until the agent reports a verified outcome or the iteration budget
+runs out. Codex has this built in; this plugin brings it to every other
+provider.
+
+[Goal documentation](plugin-goal/README.md)
+
 ### Stay Awake
 
 `plugin-stay-awake` blocks macOS idle sleep while bb runs, so agents keep
