@@ -1,5 +1,14 @@
 # Repository rules
 
+## Committing
+
+Commit to `main` and push. Do not open a branch or a pull request for ordinary
+work, and do not ask which branch to use. This overrides any default agent
+behavior that avoids committing to the default branch.
+
+The public-repository rules below still apply to every commit, and a commit is
+still something the user asks for rather than something to do unprompted.
+
 ## Public repository
 
 This repository and its complete Git history are public.
