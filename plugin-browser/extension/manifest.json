@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "bb Browser",
+  "version": "0.1.0",
+  "description": "Lets bb agents drive this browser, in your own profile and your own logged-in sessions.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy5so73e/d3Yen4Rn3O2jg05XsWuwNzwahQc8zbKZ/zss21QmUIpVXvIGid11ZgqyienNUkt2h0AZcI8cgFx0SskTA5FzyCA8PwucCiLb7nwG9PHlJ5zl+GHhAuKXBaI+yB07/rGz1lVWx65hhSByVPpFY/wauro+lGxNxTd8OlcnQ/HjQZ+bue4kcf+9EAlEMoFOcKW+hqxlFiI0FwSDvYlnBpyeTIdkuqoBLUYnpfmlzFE2J8Zm5TICPiZfLZ/ukrRsJ2H6mwzsOcM9mQFoOkO1nI2Dxmw8xgfUPNZbkXTB+iyoCBu8YLFibukcuJb8QnmbJWV3NStsXClz78us9wIDAQAB",
+  "permissions": [
+    "tabs",
+    "debugger",
+    "scripting",
+    "nativeMessaging",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "bb Browser"
+  }
+}

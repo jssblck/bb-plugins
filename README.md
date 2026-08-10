@@ -8,9 +8,10 @@ and agent skills.
 
 ### Browser
 
-`plugin-browser` adds a per-thread Chrome browser to bb. Users and agents share
-the same session through the side panel, the `bb browser` command, or Chrome
-DevTools Protocol.
+`plugin-browser` lets bb agents drive the user's own Chrome through a browser
+extension and a native messaging host. Agents work in the user's real profile
+and logged-in sessions through the `bb browser` command or the thread's Browser
+panel.
 
 [Browser documentation](plugin-browser/README.md)
 

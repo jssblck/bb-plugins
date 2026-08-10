@@ -6,7 +6,8 @@
 // exploration rather than a subagent, so it starts a session of its own.
 import type { BbPluginApi } from "@bb/plugin-sdk";
 
-import { SCRATCH_SESSION_KEY } from "./sessions.ts";
+/** Calls made outside any thread share this key. */
+export const SCRATCH_SESSION_KEY = "scratch";
 
 export type SessionKeyResolver = (
   threadId: string | undefined,

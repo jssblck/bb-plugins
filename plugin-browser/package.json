@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Browser",
-    "description": "A Chrome browser view in BB, with CDP access for agents and a cookie bridge from your own Chrome.",
+    "description": "Lets BB agents drive your own Chrome through a browser extension, signed in as you are.",
     "branding": {
       "icon": "Browser"
     },
@@ -28,14 +28,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "better-sqlite3": "^12.0.0",
-    "hono": "^4.11.9",
     "typescript": "^5.7.0",
-    "@radix-ui/react-dialog": "^1.1.19",
-    "vaul": "^1.1.2",
     "sonner": "^2.0.0"
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   useRealtime,
   useRpc,
@@ -7,102 +7,65 @@ import {
 import { toast } from "sonner";
 
 import type { rpcContract } from "../src/rpc.ts";
-import type { BrowserInput, Viewport } from "../src/types.ts";
-import { domainOfUrl } from "../src/cookies.ts";
-import { BrowserViewport } from "./browser-viewport";
 import { Button } from "./ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
 import { Icon } from "./ui/icon";
 import { Input } from "./ui/input";
 import { cn } from "../lib/utils";
 
-type Rpc = ReturnType<typeof useRpc<typeof rpcContract>>;
+interface Tab {
+  tabId: number;
+  windowId: number;
+  url: string;
+  title: string;
+  active: boolean;
+  loading: boolean;
+}
 
-interface BrowserStatus {
-  running: boolean;
-  headless: boolean;
-  chromeAvailable: boolean;
-  endpoint: { port: number; path: string; browserWsUrl: string } | null;
-  tabs: {
-    targetId: string;
-    url: string;
-    title: string;
-    loading: boolean;
-    active: boolean;
-  }[];
-  activeTargetId: string | null;
-  browserContextId: string | null;
-  viewport: { width: number; height: number; deviceScaleFactor: number };
-  canGoBack: boolean;
-  canGoForward: boolean;
+interface Status {
+  connected: boolean;
+  browsers: { id: string; version: string }[];
   sessionKey: string;
-  streamToken: string;
+  tab: Tab | null;
+  extensionDir: string;
 }
 
 /**
- * Calls name this thread; the backend resolves it to a session key, which a
- * spawned thread shares with its parent. Stream and realtime use the resolved
- * key `status` hands back, so a subagent's panel watches the shared browser.
+ * The panel watches the tab this thread drives inside the user's own Chrome.
+ * Calls name this thread; the backend resolves it to a session key a spawned
+ * thread shares with its parent, and realtime uses the key `status` returns.
  */
 export function BrowserPanel({ threadId }: PluginThreadPanelProps) {
   const rpc = useRpc<typeof rpcContract>();
-  const [status, setStatus] = useState<BrowserStatus | null>(null);
-  const [urlDraft, setUrlDraft] = useState<string | null>(null);
-  const [cookieDialogOpen, setCookieDialogOpen] = useState(false);
+  const [status, setStatus] = useState<Status | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [urlDraft, setUrlDraft] = useState("");
 
   const refresh = useCallback(() => {
     void rpc
       .call("status", { session: threadId })
-      .then(setStatus)
+      .then((next) => {
+        setStatus(next);
+        if (!next.connected) {
+          setTabs([]);
+          return;
+        }
+        void rpc
+          .call("tabs", { session: threadId })
+          .then((result) => setTabs(result.tabs))
+          .catch(() => setTabs([]));
+      })
       .catch(() => {});
   }, [rpc, threadId]);
 
-  useEffect(() => {
-    void rpc
-      .call("start", { session: threadId })
-      .then(setStatus)
-      .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error
-            ? error.message
-            : "Could not start the browser",
-        );
-        refresh();
-      });
-  }, [rpc, threadId, refresh]);
-
+  useEffect(refresh, [refresh]);
   useRealtime(`browser-changed:${status?.sessionKey ?? threadId}`, refresh);
-
-  const activeTab = status?.tabs.find((tab) => tab.active) ?? null;
-  const activeUrl = activeTab?.url ?? "";
-
-  const send = useCallback(
-    (event: BrowserInput) => {
-      void rpc.call("sendInput", { session: threadId, event }).catch(() => {});
-    },
-    [rpc, threadId],
-  );
-
-  const resize = useCallback(
-    (viewport: Viewport) => {
-      void rpc
-        .call("setViewport", { session: threadId, ...viewport })
-        .catch(() => {});
-    },
-    [rpc, threadId],
-  );
+  useRealtime("browser-connections", refresh);
 
   const act = useCallback(
     (run: () => Promise<unknown>, failure: string) => {
       run()
-        .then(refresh)
+        .then(() => refresh())
         .catch((error: unknown) => {
           toast.error(error instanceof Error ? error.message : failure);
         });
@@ -110,274 +73,185 @@ export function BrowserPanel({ threadId }: PluginThreadPanelProps) {
     [refresh],
   );
 
-  const streamUrl = status?.running
-    ? `/api/v1/plugins/browser/http/stream?token=${encodeURIComponent(status.streamToken)}&session=${encodeURIComponent(status.sessionKey)}`
-    : null;
+  const takePreview = useCallback(() => {
+    void rpc
+      .call("preview", { session: threadId })
+      .then((result) => setPreview(result.dataUrl))
+      .catch(() => setPreview(null));
+  }, [rpc, threadId]);
 
-  if (status && !status.chromeAvailable) {
+  if (!status) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-        No Chrome binary found. Install Google Chrome, then run{" "}
-        <code className="mx-1 rounded bg-muted px-1 py-0.5">
-          bb plugin reload browser
-        </code>
-        .
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading…
       </div>
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          aria-label="Back"
-          disabled={!status?.canGoBack}
-          onClick={() =>
-            act(
-              () => rpc.call("goBack", { session: threadId }),
-              "Could not go back",
-            )
-          }
-        >
-          <Icon name="ChevronLeft" className="size-4" aria-hidden />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          aria-label="Forward"
-          disabled={!status?.canGoForward}
-          onClick={() =>
-            act(
-              () => rpc.call("goForward", { session: threadId }),
-              "Could not go forward",
-            )
-          }
-        >
-          <Icon name="ChevronRight" className="size-4" aria-hidden />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          aria-label="Reload"
-          onClick={() =>
-            act(
-              () => rpc.call("reload", { session: threadId }),
-              "Could not reload",
-            )
-          }
-        >
-          <Icon
-            name={activeTab?.loading ? "Loading" : "RotateCcw"}
-            className={cn("size-4", activeTab?.loading && "animate-spin")}
-            aria-hidden
-          />
-        </Button>
-
-        <Input
-          className="h-7 flex-1 text-xs"
-          spellCheck={false}
-          placeholder="Enter a URL or search"
-          value={urlDraft ?? activeUrl}
-          onChange={(event) => setUrlDraft(event.target.value)}
-          onFocus={(event) => {
-            setUrlDraft(activeUrl);
-            event.target.select();
-          }}
-          onBlur={() => setUrlDraft(null)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              setUrlDraft(null);
-              event.currentTarget.blur();
-              return;
-            }
-            if (event.key !== "Enter") return;
-            const url = event.currentTarget.value;
-            event.currentTarget.blur();
-            act(
-              () => rpc.call("navigate", { session: threadId, url }),
-              "Could not navigate",
-            );
-          }}
-        />
-
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          aria-label="Import cookies from your Chrome"
-          onClick={() => setCookieDialogOpen(true)}
-        >
-          <Icon name="Download" className="size-4" aria-hidden />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
-          aria-label="New tab"
-          onClick={() =>
-            act(
-              () => rpc.call("newTab", { session: threadId }),
-              "Could not open a tab",
-            )
-          }
-        >
-          <Icon name="Plus" className="size-4" aria-hidden />
-        </Button>
-      </div>
-
-      {status && status.tabs.length > 1 ? (
-        <div className="flex items-stretch gap-1 overflow-x-auto border-b border-border px-2 py-1">
-          {status.tabs.map((tab) => (
-            <div
-              key={tab.targetId}
-              className={cn(
-                "group flex max-w-52 shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs",
-                tab.active
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              <button
-                type="button"
-                className="truncate"
-                title={tab.url}
-                onClick={() =>
-                  act(
-                    () =>
-                      rpc.call("selectTab", {
-                        session: threadId,
-                        targetId: tab.targetId,
-                      }),
-                    "Could not select the tab",
-                  )
-                }
-              >
-                {tab.title || tab.url || "New tab"}
-              </button>
-              <button
-                type="button"
-                aria-label="Close tab"
-                className="opacity-0 transition-opacity group-hover:opacity-100"
-                onClick={() =>
-                  act(
-                    () =>
-                      rpc.call("closeTab", {
-                        session: threadId,
-                        targetId: tab.targetId,
-                      }),
-                    "Could not close the tab",
-                  )
-                }
-              >
-                <Icon name="X" className="size-3" />
-              </button>
-            </div>
-          ))}
+  if (!status.connected) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <Icon name="Puzzle" className="size-8 text-muted-foreground" />
+        <div className="space-y-2">
+          <p className="text-sm font-medium">No browser connected</p>
+          <p className="text-sm text-muted-foreground">
+            Load the bb Browser extension in Chrome: open chrome://extensions,
+            turn on Developer mode, choose Load unpacked, and select this folder.
+          </p>
+          <code className="block break-all rounded-md bg-muted px-2 py-1 text-xs">
+            {status.extensionDir}
+          </code>
         </div>
-      ) : null}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              act(
+                () =>
+                  rpc
+                    .call("install", null)
+                    .then((result) => toast.success(result.summary)),
+                "Could not install the native messaging host",
+              )
+            }
+          >
+            Reinstall native host
+          </Button>
+          <Button variant="outline" size="sm" onClick={refresh}>
+            Check again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-      <BrowserViewport
-        streamUrl={streamUrl}
-        running={status?.running ?? false}
-        onInput={send}
-        onResize={resize}
-      />
-
-      <CookieImportDialog
-        open={cookieDialogOpen}
-        onOpenChange={setCookieDialogOpen}
-        defaultDomain={domainOfUrl(activeUrl) ?? ""}
-        session={threadId}
-        rpc={rpc}
-      />
-    </div>
-  );
-}
-
-interface CookieImportDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  defaultDomain: string;
-  session: string;
-  rpc: Rpc;
-}
-
-function CookieImportDialog({
-  open,
-  onOpenChange,
-  defaultDomain,
-  session,
-  rpc,
-}: CookieImportDialogProps) {
-  const [domains, setDomains] = useState("");
-  const [importing, setImporting] = useState(false);
-  const openedRef = useRef(false);
-
-  // Reseed from the current page each time the dialog opens, not on every
-  // navigation while it is open.
-  useEffect(() => {
-    if (open && !openedRef.current) setDomains(defaultDomain);
-    openedRef.current = open;
-  }, [open, defaultDomain]);
-
-  const runImport = () => {
-    setImporting(true);
-    const list = domains
-      .split(/[\s,]+/)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    rpc
-      .call("importCookies", { session, domains: list })
-      .then((result) => {
-        const source =
-          result.source === "live-cdp"
-            ? "your running Chrome"
-            : "your Chrome profile on disk";
-        toast.success(`Imported ${result.imported} cookies from ${source}.`);
-        onOpenChange(false);
-      })
-      .catch((error: unknown) => {
-        toast.error(
-          error instanceof Error ? error.message : "Could not import cookies",
-        );
-      })
-      .finally(() => setImporting(false));
-  };
+  const bound = status.tab;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Import cookies from Chrome</DialogTitle>
-          <DialogDescription>
-            Copies cookies out of your own Chrome so this browser shares your
-            logged-in sessions. Leave the field empty to import every domain.
-          </DialogDescription>
-        </DialogHeader>
+    <div className="flex h-full flex-col gap-3 overflow-y-auto p-3">
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!urlDraft.trim()) return;
+          act(
+            () => rpc.call("open", { session: threadId, url: urlDraft.trim() }),
+            "Could not open that URL",
+          );
+          setUrlDraft("");
+        }}
+      >
         <Input
-          autoFocus
-          spellCheck={false}
-          placeholder="github.com mail.google.com"
-          value={domains}
-          onChange={(event) => setDomains(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !importing) runImport();
-          }}
+          value={urlDraft}
+          onChange={(event) => setUrlDraft(event.target.value)}
+          placeholder="Open a URL in this thread's tab"
+          className="h-8 text-sm"
         />
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button disabled={importing} onClick={runImport}>
-            {importing ? "Importing…" : "Import"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Button type="submit" size="sm" variant="outline" disabled={!urlDraft.trim()}>
+          Open
+        </Button>
+      </form>
+
+      {bound ? (
+        <div className="space-y-2 rounded-lg border border-border p-3">
+          <div className="flex items-start gap-2">
+            <Icon name="Browser" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">
+                {bound.title || bound.url}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{bound.url}</p>
+            </div>
+            {bound.loading ? (
+              <span className="text-xs text-muted-foreground">loading…</span>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                act(() => rpc.call("show", { session: threadId }), "Could not show the tab")
+              }
+            >
+              <Icon name="Eye" /> Show
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                act(() => rpc.call("reload", { session: threadId }), "Could not reload")
+              }
+            >
+              <Icon name="RotateCcw" /> Reload
+            </Button>
+            <Button size="sm" variant="outline" onClick={takePreview}>
+              Preview
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                act(() => rpc.call("release", { session: threadId }), "Could not release")
+              }
+            >
+              Release
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                act(() => rpc.call("close", { session: threadId }), "Could not close the tab")
+              }
+            >
+              Close
+            </Button>
+          </div>
+          {preview ? (
+            <img
+              src={preview}
+              alt="Screenshot of this thread's tab"
+              className="w-full rounded-md border border-border"
+            />
+          ) : null}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+          This thread has no tab yet. Open a URL above, or claim one of the tabs
+          below.
+        </p>
+      )}
+
+      <div className="space-y-1">
+        <p className="px-1 text-xs font-medium text-muted-foreground">
+          Open tabs ({tabs.length})
+        </p>
+        {tabs.map((tab) => (
+          <button
+            key={tab.tabId}
+            type="button"
+            onClick={() =>
+              act(
+                () => rpc.call("attach", { session: threadId, tabId: tab.tabId }),
+                "Could not claim that tab",
+              )
+            }
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted",
+              bound?.tabId === tab.tabId && "bg-muted",
+            )}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm">{tab.title || tab.url}</p>
+              <p className="truncate text-xs text-muted-foreground">{tab.url}</p>
+            </div>
+            {bound?.tabId === tab.tabId ? (
+              <Icon name="Check" className="size-4 shrink-0 text-muted-foreground" />
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
