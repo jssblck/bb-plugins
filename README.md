@@ -34,6 +34,14 @@ provider.
 
 [Goal documentation](plugin-goal/README.md)
 
+### 1Password
+
+`plugin-1password` lets you grant a project access to selected 1Password items.
+Agents then read and write those items with `bb 1p` instead of calling `op` in
+a new shell, which is what was causing a 1Password prompt on every secret.
+
+[1Password documentation](plugin-1password/README.md)
+
 ### Stay Awake
 
 `plugin-stay-awake` blocks macOS idle sleep while bb runs, so agents keep
